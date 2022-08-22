@@ -69,3 +69,56 @@ impl Encoder<&[u8]> for FlipperCodec {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn try_to_fill_and_drain_u8() {
+        let mut codec = FlipperCodec::default();
+        let mut buf = BytesMut::new();
+        buf.put_slice(&[0x05, 0x01, 0x02, 0x03]);
+
+        let res_1 = codec.decode(&mut buf).unwrap();
+        assert_eq!(res_1, None);
+
+        buf.put_slice(&[0x04, 0x05]);
+        let res_2 = codec.decode(&mut buf).unwrap();
+        assert_eq!(res_2, Some(vec![0x01, 0x02, 0x03, 0x04, 0x05]));
+    }
+
+    #[test]
+    fn check_data_sanitizer() {
+        let mut codec = FlipperCodec::default();
+        let mut buf = BytesMut::new();
+        buf.put_slice(&[0xFE, 0xFF, 0x03, 0x00]); // length 65534
+        if let Err(err) = codec.decode(&mut buf) {
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        } else {
+            panic!("It should error out!");
+        }
+    }
+
+    #[test]
+    fn check_basic_build_frame() {
+        let mut codec = FlipperCodec::default();
+        let mut buf: BytesMut = BytesMut::new();
+        codec
+            .encode(&[0x01, 0x02, 0x03, 0x04, 0x05], &mut buf)
+            .unwrap();
+        assert_eq!(buf, vec![0x05, 0x01, 0x02, 0x03, 0x04, 0x05]);
+    }
+
+    #[test]
+    fn check_basic_build_frame_ovf() {
+        let mut codec = FlipperCodec::default();
+        let mut buf: BytesMut = BytesMut::new();
+        let large_data: [u8; 65534] = [0; 65534];
+        if let Err(err) = codec.encode(&large_data, &mut buf) {
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        } else {
+            panic!("It should error out!");
+        }
+    }
+}
