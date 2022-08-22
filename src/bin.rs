@@ -18,8 +18,6 @@ use transport::ble::{BTLETransport, FlipperScanner};
 use transport::serial::SerialTransport;
 use transport::FlipperTransport;
 
-use futures::pin_mut;
-
 #[tokio::main]
 async fn main() {
     env_logger::init();

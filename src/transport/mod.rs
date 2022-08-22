@@ -9,9 +9,7 @@
  */
 
 use super::error::FlipperError;
-use crate::consts::MAX_FRAME_LENGTH;
 use async_trait::async_trait;
-use integer_encoding::VarInt;
 
 #[cfg(feature = "ble")]
 pub mod ble;
