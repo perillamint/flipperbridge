@@ -16,6 +16,13 @@ thiserror = "1.0"
 tokio-stream = "0.1"
 env_logger = "0.9"
 log = "0.4"
+futures = "0.3"
+pin-utils = "0.1"
+lazy_static = "1.4"
+uuid = "1.1"
+async-stream = "0.3"
+tokio-util = { version = "0.7", features = ["codec"] }
+bytes = "1.2"
 
 btleplug = { version = "0.10", optional = true }
 tokio-serial = { version = "5", default-features = false, features = ["rt"], optional = true }

@@ -8,13 +8,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use super::{build_frame, FlipperTransport, StreamPacketizer};
+use super::FlipperTransport;
 use crate::consts::PROMPT_PATTERN;
 use crate::error::FlipperError;
 use async_trait::async_trait;
-use log::{debug, trace, warn};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ErrorKind};
+use futures::sink::SinkExt;
+use futures::stream::StreamExt;
+use log::{debug, trace};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_serial::{self, SerialPortBuilderExt, SerialStream};
+
+use crate::codec::FlipperCodec;
+use tokio_util::codec::Framed;
 
 use pretty_hex::*;
 
@@ -30,51 +35,51 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 /// Serial transport for Flipper Zero
 pub struct SerialTransport {
-    port: SerialStream,
-    packetizer: StreamPacketizer,
+    tty: String,
+    framed: Option<Framed<SerialStream, FlipperCodec>>,
 }
 
 impl SerialTransport {
     /// Create SerialTransport using tty path.
     /// for example, "/dev/ttyACM0" or "COM1"
     pub fn new(tty: &str) -> Self {
-        let port = tokio_serial::new(tty, FLIPPER_BAUD)
-            .open_native_async()
-            .unwrap();
         Self {
-            port,
-            packetizer: StreamPacketizer::new(),
+            tty: tty.to_string(),
+            framed: None,
         }
     }
 
     /// Write raw bytes async-y to the stream.
     /// Internal use only.
-    async fn write_raw(&mut self, data: &[u8]) -> Result<(), FlipperError> {
+    async fn write_raw(port: &mut SerialStream, data: &[u8]) -> Result<(), FlipperError> {
         trace!("Serial Write - {}", data.hex_dump());
         // Write to the serial port
         let mut pos = 0;
         while pos < data.len() {
-            let n = match self.port.write(&data[pos..]).await {
+            let n = match port.write(&data[pos..]).await {
                 Ok(x) => x,
                 Err(e) => return Err(FlipperError::IOFailure(e.to_string())),
             };
             pos += n;
         }
 
-        self.port.flush().await.unwrap();
+        port.flush().await.unwrap();
 
         Ok(())
     }
 
     /// Drain Serial stream until specific pattern.
     /// Like, draining until FZShell prompt. Internal use only.
-    async fn drain_until_pattern(&mut self, pattern: &[u8]) -> Result<(), FlipperError> {
+    async fn drain_until_pattern(
+        port: &mut SerialStream,
+        pattern: &[u8],
+    ) -> Result<(), FlipperError> {
         let mut patternbuf: Vec<u8> = vec![];
         let mut buf = [0u8; 1024];
 
         // TODO: Implement timeout.
         loop {
-            let readsz = self.port.read(&mut buf).await.unwrap();
+            let readsz = port.read(&mut buf).await.unwrap();
 
             trace!("Serial Read - {}", buf[0..readsz].hex_dump());
             patternbuf.extend_from_slice(&buf[0..readsz]);
@@ -96,34 +101,33 @@ impl FlipperTransport for SerialTransport {
     /// Initialize and prepare serial stream for FZ RPC communication.
     /// Must be called before start sending / receiving RPC command frames.
     async fn init(&mut self) -> Result<(), FlipperError> {
-        self.drain_until_pattern(&PROMPT_PATTERN).await?;
+        let mut port = tokio_serial::new(&self.tty, FLIPPER_BAUD)
+            .open_native_async()
+            .unwrap();
+        Self::drain_until_pattern(&mut port, &PROMPT_PATTERN).await?;
         debug!("FZShell detected. Running start_rpc_session\n");
 
-        self.write_raw("start_rpc_session\r".as_bytes()).await?;
-        self.drain_until_pattern("start_rpc_session\r\n".as_bytes())
-            .await?;
+        Self::write_raw(&mut port, "start_rpc_session\r".as_bytes()).await?;
+        Self::drain_until_pattern(&mut port, "start_rpc_session\r\n".as_bytes()).await?;
         debug!("Got command response.\n");
+        self.framed = Some(Framed::new(port, FlipperCodec::default()));
+
         Ok(())
     }
 
     /// Read variable size FZ RPC frame.
     async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError> {
-        let mut buf = [0u8; 1024];
         loop {
-            let readsz = self.port.read(&mut buf).await.unwrap();
-            debug!("Current pkt: {:?}\n", &buf[0..readsz]);
-            self.packetizer.fill_buffer(&buf[0..readsz]);
-            match self.packetizer.poll() {
-                Ok(Some(x)) => return Ok(x),
-                Err(e) => return Err(e),
-                Ok(None) => {} // Data is not ready yet, loop back and wait again.
-            }
+            match self.framed.as_mut().unwrap().next().await {
+                None => {}
+                Some(x) => return Ok(x.unwrap()),
+            };
         }
     }
 
     /// Write(send) FZ RPC frame. Frame header will be automatically calculated and appended.
     async fn write_frame(&mut self, data: &[u8]) -> Result<(), FlipperError> {
-        let frame = build_frame(data)?;
-        self.write_raw(&frame).await
+        self.framed.as_mut().unwrap().send(data).await;
+        Ok(())
     }
 }

@@ -14,3 +14,5 @@ pub mod consts;
 pub mod error;
 /// FlipperBridge transport.
 pub mod transport;
+
+pub(crate) mod codec;

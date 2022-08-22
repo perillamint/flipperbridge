@@ -12,10 +12,18 @@ use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
 pub enum FlipperError {
+    #[error("Failed to fetch adapter list: {0}")]
+    BTAdapterError(String),
+    #[error("Generic BT error: {0}")]
+    BTFailure(String),
+    #[error("BT characteristics does not exist. Maybe invalid device?")]
+    BTNoCharacteristics,
     #[error("Failed to do I/O: {0}")]
     IOFailure(String),
     #[error("Data too large to process: {0}")]
     DataTooLarge(usize),
+    #[error("Index out of bounds.")]
+    OutOfBounds,
     #[error("Unknown internal error. BAD!")]
     Unknown,
 }
