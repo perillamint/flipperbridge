@@ -20,19 +20,23 @@ use pretty_hex::*;
 
 const FLIPPER_BAUD: u32 = 115200;
 
-// Code from https://stackoverflow.com/questions/35901547/how-can-i-find-a-subsequence-in-a-u8-slice
+/// Find subsequence in u8 slice.
+/// Code from https://stackoverflow.com/questions/35901547/how-can-i-find-a-subsequence-in-a-u8-slice
 fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
         .windows(needle.len())
         .position(|window| window == needle)
 }
 
+/// Serial transport for Flipper Zero
 pub struct SerialTransport {
     port: SerialStream,
     packetizer: StreamPacketizer,
 }
 
 impl SerialTransport {
+    /// Create SerialTransport using tty path.
+    /// for example, "/dev/ttyACM0" or "COM1"
     pub fn new(tty: &str) -> Self {
         let port = tokio_serial::new(tty, FLIPPER_BAUD)
             .open_native_async()
@@ -43,6 +47,8 @@ impl SerialTransport {
         }
     }
 
+    /// Write raw bytes async-y to the stream.
+    /// Internal use only.
     async fn write_raw(&mut self, data: &[u8]) -> Result<(), FlipperError> {
         trace!("Serial Write - {}", data.hex_dump());
         // Write to the serial port
@@ -60,6 +66,8 @@ impl SerialTransport {
         Ok(())
     }
 
+    /// Drain Serial stream until specific pattern.
+    /// Like, draining until FZShell prompt. Internal use only.
     async fn drain_until_pattern(&mut self, pattern: &[u8]) -> Result<(), FlipperError> {
         let mut patternbuf: Vec<u8> = vec![];
         let mut buf = [0u8; 1024];
@@ -85,6 +93,8 @@ impl SerialTransport {
 
 #[async_trait]
 impl FlipperTransport for SerialTransport {
+    /// Initialize and prepare serial stream for FZ RPC communication.
+    /// Must be called before start sending / receiving RPC command frames.
     async fn init(&mut self) -> Result<(), FlipperError> {
         self.drain_until_pattern(&PROMPT_PATTERN).await?;
         debug!("FZShell detected. Running start_rpc_session\n");
@@ -96,6 +106,7 @@ impl FlipperTransport for SerialTransport {
         Ok(())
     }
 
+    /// Read variable size FZ RPC frame.
     async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError> {
         let mut buf = [0u8; 1024];
         loop {
@@ -110,6 +121,7 @@ impl FlipperTransport for SerialTransport {
         }
     }
 
+    /// Write(send) FZ RPC frame. Frame header will be automatically calculated and appended.
     async fn write_frame(&mut self, data: &[u8]) -> Result<(), FlipperError> {
         let frame = build_frame(data)?;
         self.write_raw(&frame).await

@@ -8,5 +8,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-pub const MAX_FRAME_LENGTH: usize = 1536; // Value from flipper firmware applications/rpc/rpc.h
-pub const PROMPT_PATTERN: [u8; 4] = [0x0a, 0x3e, 0x3a, 0x20]; // '\n>: '
+/// Flipper Zero max frame length.
+/// Value from flipper firmware applications/rpc/rpc.h
+pub const MAX_FRAME_LENGTH: usize = 1536;
+/// Flipper zero prompt pattern in u8 slice.
+/// Human readable representation: '\n>: '
+pub const PROMPT_PATTERN: [u8; 4] = [0x0a, 0x3e, 0x3a, 0x20];

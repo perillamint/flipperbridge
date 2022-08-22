@@ -8,6 +8,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+/// Flipper Constants.
 pub mod consts;
+/// FlipperBridge error types.
 pub mod error;
+/// FlipperBridge transport.
 pub mod transport;

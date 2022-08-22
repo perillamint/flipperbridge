@@ -18,26 +18,40 @@ pub mod ble;
 #[cfg(feature = "serial")]
 pub mod serial;
 
+/// Transport interface definition
 #[async_trait]
 pub trait FlipperTransport {
+    /// Initialize and prepare serial stream for FZ RPC communication.
+    /// Must be called before start sending / receiving RPC command frames.
     async fn init(&mut self) -> Result<(), FlipperError>;
+    /// Read FZ RPC frame. Returns frame body without frame header(length)
     async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError>;
+    /// Write(send) FZ RPC frame. Frame header will be automatically calculated and appended.
     async fn write_frame(&mut self, data: &[u8]) -> Result<(), FlipperError>;
 }
 
+/// Stream packetizer utility
 struct StreamPacketizer {
     buf: Vec<u8>,
 }
 
 impl StreamPacketizer {
+    /// Create new stream packetizer instance
     pub fn new() -> Self {
         Self { buf: vec![] }
     }
 
+    /// Pour data from raw stream. Provided data will be stored
+    /// in the internal buffer and will be used later when poll() called.
     pub fn fill_buffer(&mut self, data: &[u8]) {
         self.buf.extend_from_slice(data)
     }
 
+    /// Grab FZ RPC frame from the internal buffer.
+    /// Will return Ok(Some(Vec<u8>)) when it has data ready to provide
+    /// and will return Ok(None) when it didn't received whole frame yet.
+    /// Will return DataTooLarge error when packetizer encounters
+    /// frame larger then MAX_FRAME_LENGTH.
     pub fn poll(&mut self) -> Result<Option<Vec<u8>>, FlipperError> {
         // Try to parse buffer head
         match u64::decode_var(&self.buf) {
@@ -60,6 +74,7 @@ impl StreamPacketizer {
     }
 }
 
+/// Calculate and append header on given frame.
 fn build_frame(data: &[u8]) -> Result<Vec<u8>, FlipperError> {
     let mut header = [0u8; 8];
 
