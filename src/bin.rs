@@ -18,11 +18,36 @@ use transport::ble::{BTLETransport, FlipperScanner};
 use transport::serial::SerialTransport;
 use transport::{FlipperFrameReceiver, FlipperFrameSender, FlipperTransport};
 
+use clap::Parser;
+
+#[macro_use]
+extern crate lazy_static;
+
+#[derive(clap::Parser)]
+#[clap(about, version, author)]
+struct Args {
+    #[clap(long, short = 't', value_name = "TRANSPORT`")]
+    transport: String,
+}
+
+lazy_static! {
+    static ref ARGS: Args = Args::parse();
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    //btle_example().await;
-    serial_example().await;
+    match ARGS.transport.as_str() {
+        "ble" => {
+            btle_example().await;
+        }
+        "serial" => {
+            serial_example().await;
+        }
+        _ => {
+            println!("Require transport type. Use --help for more information.");
+        }
+    }
 }
 
 async fn serial_example() {

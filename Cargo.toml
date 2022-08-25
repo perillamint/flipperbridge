@@ -30,16 +30,17 @@ tokio = { version = "1", features = ["full"] }
 clap = { version = "3.1", features = ["derive"], optional = true }
 pretty-hex = { version = "0.3", optional = true }
 
+[features]
+default = ["ble", "serial", "pretty-hex"]
+build_binary = ["ble", "serial", "clap", "pretty-hex"]
+ble = ["btleplug"]
+serial = ["tokio-serial"]
+
 [lib]
 name = "flipper_bridge"
 path = "src/lib.rs"
 
-[features]
-default = ["ble", "serial", "pretty-hex"]
-build-binary = ["ble", "serial", "clap", "pretty-hex"]
-ble = ["btleplug"]
-serial = ["tokio-serial"]
-
 [[bin]]
 name = "flipperbridge-cli"
 path = "src/bin.rs"
+required-features = ["build_binary"]
