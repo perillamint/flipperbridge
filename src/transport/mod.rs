@@ -24,7 +24,12 @@ pub trait FlipperTransport {
     async fn init(&mut self) -> Result<(), FlipperError>;
 
     /// Convert transport into receiver / sender pair
-    fn into_channel(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>);
+    fn into_channel(
+        self,
+    ) -> (
+        Box<dyn FlipperFrameReceiver + Send + Sync>,
+        Box<dyn FlipperFrameSender + Send + Sync>,
+    );
 }
 
 #[async_trait]

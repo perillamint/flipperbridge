@@ -13,7 +13,9 @@ mod consts;
 mod error;
 mod transport;
 
+use async_lock::RwLock;
 use pretty_hex::*;
+use std::sync::Arc;
 use transport::ble::{BTLETransport, FlipperScanner};
 use transport::serial::SerialTransport;
 use transport::FlipperTransport;
@@ -53,18 +55,18 @@ async fn main() {
 async fn serial_example() {
     let mut transport = SerialTransport::new("/dev/ttyACM0");
     transport.init().await.unwrap();
-    let (mut receiver, mut sender) = transport.into_channel();
 
-    let fut1 = async {
+    let (mut receiver, mut sender) = transport.into_channel();
+    let recv_thread = tokio::spawn(async move {
         loop {
             let data = receiver.read_frame().await.unwrap();
             println!("{:?}\n", data.hex_dump());
         }
-    };
+    });
 
-    let fut2 = sender.write_frame(&[0x08, 0x02, 0x82, 0x02, 0x00]);
+    sender.write_frame(&[0x08, 0x02, 0x82, 0x02, 0x00]).await;
 
-    let (_, _) = futures::join!(fut1, fut2);
+    futures::join!((recv_thread));
 }
 
 async fn btle_example() {
@@ -79,16 +81,16 @@ async fn btle_example() {
 
     let mut transport = BTLETransport::new(flip).await;
     transport.init().await.unwrap();
-    let (mut receiver, mut sender) = transport.into_channel();
 
-    let fut1 = async {
+    let (mut receiver, mut sender) = transport.into_channel();
+    let recv_thread = tokio::spawn(async move {
         loop {
             let data = receiver.read_frame().await.unwrap();
             println!("{:?}\n", data.hex_dump());
         }
-    };
+    });
 
-    let fut2 = sender.write_frame(&[0x08, 0x02, 0x82, 0x02, 0x00]);
+    sender.write_frame(&[0x08, 0x02, 0x82, 0x02, 0x00]).await;
 
-    let (_, _) = futures::join!(fut1, fut2);
+    futures::join!((recv_thread));
 }

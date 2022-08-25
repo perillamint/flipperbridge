@@ -115,7 +115,12 @@ impl FlipperTransport for SerialTransport {
         Ok(())
     }
 
-    fn into_channel(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
+    fn into_channel(
+        self,
+    ) -> (
+        Box<dyn FlipperFrameReceiver + Send + Sync>,
+        Box<dyn FlipperFrameSender + Send + Sync>,
+    ) {
         let (rx, tx) = split(self.framed.unwrap().into_inner());
 
         (

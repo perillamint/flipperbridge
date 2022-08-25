@@ -154,7 +154,12 @@ impl FlipperTransport for BTLETransport {
         Ok(())
     }
 
-    fn into_channel(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
+    fn into_channel(
+        self,
+    ) -> (
+        Box<dyn FlipperFrameReceiver + Send + Sync>,
+        Box<dyn FlipperFrameSender + Send + Sync>,
+    ) {
         let sharable_flipper = Arc::new(RwLock::new(self.flipper));
         let chars = self.chars.expect("Not initialized!");
         (
