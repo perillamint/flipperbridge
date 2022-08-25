@@ -16,7 +16,7 @@ mod transport;
 use pretty_hex::*;
 use transport::ble::{BTLETransport, FlipperScanner};
 use transport::serial::SerialTransport;
-use transport::{FlipperFrameReceiver, FlipperFrameSender, FlipperTransport};
+use transport::FlipperTransport;
 
 use clap::Parser;
 
@@ -74,7 +74,7 @@ async fn btle_example() {
     // Just use adapter zero.
     scanner.set_adapter(0).unwrap();
     // search it.
-    let flip = scanner.search_flipper_by_name("").await.unwrap();
+    let flip = scanner.search_flipper_by_name("Flipper ").await.unwrap();
     println!("{:?}", flip);
 
     let mut transport = BTLETransport::new(flip).await;

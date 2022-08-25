@@ -17,20 +17,16 @@ use crate::error::FlipperError;
 use async_lock::RwLock;
 use async_trait::async_trait;
 use btleplug::api::{
-    Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, ValueNotification,
-    WriteType,
+    Central, Characteristic, Manager as _, Peripheral as _, ValueNotification, WriteType,
 };
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use bytes::BytesMut;
 use futures::stream::{Stream, StreamExt};
-use log::{debug, trace};
+use log::trace;
 use pretty_hex::*;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio_util::codec::{Decoder, Encoder};
-
-use std::time::Duration;
-use tokio::time;
 
 pub struct FlipperScanner {
     bt_adapters: Vec<Adapter>,
@@ -84,10 +80,8 @@ impl FlipperScanner {
         }
     }
 
-    pub async fn search_flipper_by_name(&mut self, name: &str) -> Option<Peripheral> {
-        let central = &self.bt_adapters[0];
-        //central.start_scan(ScanFilter::default()).await.unwrap();
-        //time::sleep(Duration::from_secs(2)).await;
+    pub async fn search_flipper_by_name(&mut self, flipper_name: &str) -> Option<Peripheral> {
+        let central = &self.bt_adapters[self.adapter_idx];
 
         for p in central.peripherals().await.unwrap() {
             if p.properties()
@@ -96,17 +90,13 @@ impl FlipperScanner {
                 .unwrap()
                 .local_name
                 .iter()
-                .any(|name| name.contains("Flipper"))
+                .any(|name| name.contains(flipper_name))
             {
                 return Some(p);
             }
         }
         None
     }
-}
-
-pub struct BTLEStream {
-    flipper: Peripheral,
 }
 
 #[derive(Clone)]
@@ -197,7 +187,7 @@ impl FlipperFrameReceiver for BTLETransport {
             return Ok(x);
         }
 
-        let chars = self.chars.as_ref().unwrap().clone();
+        //let chars = self.chars.as_ref().unwrap().clone();
         loop {
             let mut notification = self
                 .flipper
@@ -302,7 +292,7 @@ impl FlipperFrameSender for BTLEFrameSender {
 }
 
 pub struct BTLEFrameReceiver {
-    rx_characteristic: Characteristic,
+    _rx_characteristic: Characteristic,
     flipper: Arc<RwLock<Peripheral>>,
     codec: FlipperCodec,
 }
@@ -311,7 +301,7 @@ impl BTLEFrameReceiver {
     fn new(flipper: Arc<RwLock<Peripheral>>, rx_chr: Characteristic) -> Self {
         Self {
             flipper,
-            rx_characteristic: rx_chr,
+            _rx_characteristic: rx_chr,
             codec: FlipperCodec::default(),
         }
     }
