@@ -14,15 +14,19 @@ use crate::consts::{
     BLE_OVERFLOW_CHARACTERISTIC_UUID, BLE_RX_CHARACTERISTIC_UUID, BLE_TX_CHARACTERISTIC_UUID,
 };
 use crate::error::FlipperError;
+use async_lock::RwLock;
 use async_trait::async_trait;
 use btleplug::api::{
-    Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, WriteType,
+    Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, ValueNotification,
+    WriteType,
 };
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use bytes::BytesMut;
 use futures::stream::{Stream, StreamExt};
 use log::{debug, trace};
 use pretty_hex::*;
+use std::pin::Pin;
+use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Decoder, Encoder};
 
@@ -117,6 +121,7 @@ pub struct BTLETransport {
     flipper: Peripheral,
     chars: Option<FlipperCharacteristics>,
     codec: FlipperCodec,
+    notification_stream: Option<Pin<Box<dyn Stream<Item = ValueNotification> + Send>>>,
 }
 
 impl BTLETransport {
@@ -125,6 +130,7 @@ impl BTLETransport {
             flipper,
             chars: None,
             codec: FlipperCodec::default(),
+            notification_stream: None,
         }
     }
 }
@@ -163,11 +169,23 @@ impl FlipperTransport for BTLETransport {
 
         self.chars = Some(FlipperCharacteristics { rx, tx, ovf });
 
+        self.notification_stream = Some(
+            self.flipper
+                .notifications()
+                .await
+                .map_err(|e| -> FlipperError { FlipperError::IOFailure(e.to_string()) })?,
+        );
+
         Ok(())
     }
 
-    fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
-        todo!()
+    async fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
+        let sharable_flipper = Arc::new(RwLock::new(self.flipper));
+        let chars = self.chars.expect("Not initialized!");
+        (
+            Box::new(BTLEFrameReceiver::new(sharable_flipper.clone(), chars.rx)),
+            Box::new(BTLEFrameSender::new(sharable_flipper, chars.tx, chars.ovf)),
+        )
     }
 }
 
@@ -230,6 +248,109 @@ impl FlipperFrameSender for BTLETransport {
         println!("{:?}\n", self.flipper.read(&chars.ovf).await);
 
         Ok(())
+    }
+}
+
+pub struct BTLEFrameSender {
+    tx_characteristic: Characteristic,
+    ovf_characteristic: Characteristic,
+    flipper: Arc<RwLock<Peripheral>>,
+    codec: FlipperCodec,
+}
+
+impl BTLEFrameSender {
+    fn new(
+        flipper: Arc<RwLock<Peripheral>>,
+        tx_chr: Characteristic,
+        ovf_chr: Characteristic,
+    ) -> Self {
+        Self {
+            flipper,
+            tx_characteristic: tx_chr,
+            ovf_characteristic: ovf_chr,
+            codec: FlipperCodec::default(),
+        }
+    }
+}
+
+#[async_trait]
+impl FlipperFrameSender for BTLEFrameSender {
+    async fn write_frame(&mut self, data: &[u8]) -> Result<(), FlipperError> {
+        let mut frame: BytesMut = BytesMut::new();
+        self.codec.encode(data, &mut frame).unwrap();
+        // TODO: Implement chunking and overflow handling
+        trace!("BTLE TX: {:?}\n", &frame.hex_dump());
+        let bufsz = u32::from_be_bytes(
+            self.flipper
+                .read()
+                .await
+                .read(&self.ovf_characteristic)
+                .await
+                .unwrap()
+                .try_into()
+                .unwrap(),
+        );
+        println!("remaining buffer: {:?}\n", bufsz);
+        self.flipper
+            .read()
+            .await
+            .write(&self.tx_characteristic, &frame, WriteType::WithoutResponse)
+            .await
+            .map_err(|e| -> FlipperError { FlipperError::IOFailure(e.to_string()) })?;
+
+        Ok(())
+    }
+}
+
+pub struct BTLEFrameReceiver {
+    rx_characteristic: Characteristic,
+    flipper: Arc<RwLock<Peripheral>>,
+    codec: FlipperCodec,
+}
+
+impl BTLEFrameReceiver {
+    fn new(flipper: Arc<RwLock<Peripheral>>, rx_chr: Characteristic) -> Self {
+        Self {
+            flipper,
+            rx_characteristic: rx_chr,
+            codec: FlipperCodec::default(),
+        }
+    }
+}
+
+#[async_trait]
+impl FlipperFrameReceiver for BTLEFrameReceiver {
+    async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError> {
+        // Empty the codec first.
+        let mut buf = BytesMut::new();
+        if let Ok(Some(x)) = self.codec.decode(&mut buf) {
+            return Ok(x);
+        }
+
+        loop {
+            let mut notification = self
+                .flipper
+                .read()
+                .await
+                .notifications()
+                .await
+                .map_err(|e| -> FlipperError { FlipperError::IOFailure(e.to_string()) })?
+                .take(1);
+            let notif = notification.next().await;
+
+            if notif == None {
+                continue;
+            }
+
+            let mut buf = BytesMut::new();
+            buf.extend_from_slice(&notif.unwrap().value);
+            trace!("BTLE RX: {:?}\n", &buf.hex_dump());
+            match self.codec.decode(&mut buf) {
+                Ok(Some(x)) => return Ok(x),
+                Err(e) => return Err(FlipperError::IOFailure(e.to_string())),
+                Ok(None) => {} // Data is not ready yet, loop back and wait again.
+            }
+        }
     }
 }
 

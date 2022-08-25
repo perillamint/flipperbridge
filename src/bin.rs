@@ -53,7 +53,7 @@ async fn main() {
 async fn serial_example() {
     let mut transport = SerialTransport::new("/dev/ttyACM0");
     transport.init().await.unwrap();
-    let (mut receiver, mut sender) = transport.split_stream();
+    let (mut receiver, mut sender) = transport.split_stream().await;
 
     let fut1 = async {
         loop {
@@ -79,13 +79,16 @@ async fn btle_example() {
 
     let mut transport = BTLETransport::new(flip).await;
     transport.init().await.unwrap();
-    transport
-        .write_frame(&[0x08, 0x02, 0x82, 0x02, 0x00])
-        .await
-        .unwrap();
+    let (mut receiver, mut sender) = transport.split_stream().await;
 
-    loop {
-        let data = transport.read_frame().await.unwrap();
-        println!("{}\n", data.hex_dump());
-    }
+    let fut1 = async {
+        loop {
+            let data = receiver.read_frame().await.unwrap();
+            println!("{}\n", data.hex_dump());
+        }
+    };
+
+    let fut2 = sender.write_frame(&[0x08, 0x02, 0x82, 0x02, 0x00]);
+
+    let (_, _) = futures::join!(fut1, fut2);
 }

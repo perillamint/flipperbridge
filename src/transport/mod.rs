@@ -24,7 +24,7 @@ pub trait FlipperTransport {
     async fn init(&mut self) -> Result<(), FlipperError>;
 
     /// Split stream into two separated stream.
-    fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>);
+    async fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>);
 }
 
 #[async_trait]

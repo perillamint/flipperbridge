@@ -81,7 +81,6 @@ impl SerialTransport {
         // TODO: Implement timeout.
         loop {
             let readsz = port.read(&mut buf).await.unwrap();
-
             trace!("Serial Read - {}", buf[0..readsz].hex_dump());
             patternbuf.extend_from_slice(&buf[0..readsz]);
 
@@ -116,7 +115,7 @@ impl FlipperTransport for SerialTransport {
         Ok(())
     }
 
-    fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
+    async fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
         let (rx, tx) = split(self.framed.unwrap().into_inner());
 
         (

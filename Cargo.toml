@@ -21,6 +21,7 @@ pin-utils = "0.1"
 lazy_static = "1.4"
 uuid = "1.1"
 async-stream = "0.3"
+async-lock = "2.5"
 tokio-util = { version = "0.7", features = ["codec"] }
 bytes = "1.2"
 
