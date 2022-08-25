@@ -8,22 +8,20 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use super::FlipperTransport;
+use super::{FlipperFrameReceiver, FlipperFrameSender, FlipperTransport};
 use crate::codec::FlipperCodec;
 use crate::consts::{
-    BLE_OVERFLOW_CHARACTERISTIC_UUID, BLE_RX_CHARACTERISTIC_UUID, BLE_SERIALSVC_UUID,
-    BLE_TX_CHARACTERISTIC_UUID,
+    BLE_OVERFLOW_CHARACTERISTIC_UUID, BLE_RX_CHARACTERISTIC_UUID, BLE_TX_CHARACTERISTIC_UUID,
 };
 use crate::error::FlipperError;
-use async_stream::stream;
 use async_trait::async_trait;
 use btleplug::api::{
     Central, Characteristic, Manager as _, Peripheral as _, ScanFilter, WriteType,
 };
 use btleplug::platform::{Adapter, Manager, Peripheral};
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::BytesMut;
 use futures::stream::{Stream, StreamExt};
-use log::{debug, trace, warn};
+use log::{debug, trace};
 use pretty_hex::*;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Decoder, Encoder};
@@ -168,6 +166,13 @@ impl FlipperTransport for BTLETransport {
         Ok(())
     }
 
+    fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl FlipperFrameReceiver for BTLETransport {
     async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError> {
         // Empty the codec first.
         let mut buf = BytesMut::new();
@@ -199,15 +204,25 @@ impl FlipperTransport for BTLETransport {
             }
         }
     }
+}
 
+#[async_trait]
+impl FlipperFrameSender for BTLETransport {
     async fn write_frame(&mut self, data: &[u8]) -> Result<(), FlipperError> {
         let chars = self.chars.as_ref().unwrap().clone();
         let mut frame: BytesMut = BytesMut::new();
         self.codec.encode(data, &mut frame).unwrap();
         // TODO: Implement chunking and overflow handling
         trace!("BTLE TX: {:?}\n", &frame.hex_dump());
-
-        println!("{:?}\n", self.flipper.read(&chars.ovf).await);
+        let bufsz = u32::from_be_bytes(
+            self.flipper
+                .read(&chars.ovf)
+                .await
+                .unwrap()
+                .try_into()
+                .unwrap(),
+        );
+        println!("remaining buffer: {:?}\n", bufsz);
         self.flipper
             .write(&chars.tx, &frame, WriteType::WithoutResponse)
             .await

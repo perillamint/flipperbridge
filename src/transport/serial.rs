@@ -8,18 +8,19 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-use super::FlipperTransport;
+use super::{FlipperFrameReceiver, FlipperFrameSender, FlipperTransport};
 use crate::consts::PROMPT_PATTERN;
 use crate::error::FlipperError;
 use async_trait::async_trait;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use log::{debug, trace};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::split;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio_serial::{self, SerialPortBuilderExt, SerialStream};
 
 use crate::codec::FlipperCodec;
-use tokio_util::codec::Framed;
+use tokio_util::codec::{Framed, FramedRead, FramedWrite};
 
 use pretty_hex::*;
 
@@ -115,6 +116,18 @@ impl FlipperTransport for SerialTransport {
         Ok(())
     }
 
+    fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
+        let (rx, tx) = split(self.framed.unwrap().into_inner());
+
+        (
+            Box::new(SerialFrameReceiver::new(rx)),
+            Box::new(SerialFrameSender::new(tx)),
+        )
+    }
+}
+
+#[async_trait]
+impl FlipperFrameReceiver for SerialTransport {
     /// Read variable size FZ RPC frame.
     async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError> {
         loop {
@@ -124,10 +137,63 @@ impl FlipperTransport for SerialTransport {
             };
         }
     }
+}
 
+#[async_trait]
+impl FlipperFrameSender for SerialTransport {
     /// Write(send) FZ RPC frame. Frame header will be automatically calculated and appended.
     async fn write_frame(&mut self, data: &[u8]) -> Result<(), FlipperError> {
-        self.framed.as_mut().unwrap().send(data).await;
-        Ok(())
+        match self.framed.as_mut().unwrap().send(data).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(FlipperError::IOFailure(e.to_string())),
+        }
+    }
+}
+
+struct SerialFrameSender {
+    framed: FramedWrite<WriteHalf<SerialStream>, FlipperCodec>,
+}
+
+impl SerialFrameSender {
+    pub fn new(write_stream: WriteHalf<SerialStream>) -> Self {
+        Self {
+            framed: FramedWrite::new(write_stream, FlipperCodec::default()),
+        }
+    }
+}
+
+#[async_trait]
+impl FlipperFrameSender for SerialFrameSender {
+    /// Write(send) FZ RPC frame. Frame header will be automatically calculated and appended.
+    async fn write_frame(&mut self, data: &[u8]) -> Result<(), FlipperError> {
+        match self.framed.send(data).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(FlipperError::IOFailure(e.to_string())),
+        }
+    }
+}
+
+struct SerialFrameReceiver {
+    framed: FramedRead<ReadHalf<SerialStream>, FlipperCodec>,
+}
+
+impl SerialFrameReceiver {
+    pub fn new(read_stream: ReadHalf<SerialStream>) -> Self {
+        Self {
+            framed: FramedRead::new(read_stream, FlipperCodec::default()),
+        }
+    }
+}
+
+#[async_trait]
+impl FlipperFrameReceiver for SerialFrameReceiver {
+    /// Read variable size FZ RPC frame.
+    async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError> {
+        loop {
+            match self.framed.next().await {
+                None => {}
+                Some(x) => return Ok(x.unwrap()),
+            };
+        }
     }
 }

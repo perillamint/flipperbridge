@@ -16,7 +16,7 @@ mod transport;
 use pretty_hex::*;
 use transport::ble::{BTLETransport, FlipperScanner};
 use transport::serial::SerialTransport;
-use transport::FlipperTransport;
+use transport::{FlipperFrameReceiver, FlipperFrameSender, FlipperTransport};
 
 #[tokio::main]
 async fn main() {
@@ -28,16 +28,18 @@ async fn main() {
 async fn serial_example() {
     let mut transport = SerialTransport::new("/dev/ttyACM0");
     transport.init().await.unwrap();
+    let (mut receiver, mut sender) = transport.split_stream();
 
-    transport
-        .write_frame(&[0x08, 0x02, 0x82, 0x02, 0x00])
-        .await
-        .unwrap();
+    let fut1 = async {
+        loop {
+            let data = receiver.read_frame().await.unwrap();
+            println!("{}\n", data.hex_dump());
+        }
+    };
 
-    loop {
-        let data = transport.read_frame().await.unwrap();
-        println!("{}\n", data.hex_dump());
-    }
+    let fut2 = sender.write_frame(&[0x08, 0x02, 0x82, 0x02, 0x00]);
+
+    let (_, _) = futures::join!(fut1, fut2);
 }
 
 async fn btle_example() {

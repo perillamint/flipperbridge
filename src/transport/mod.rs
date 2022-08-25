@@ -22,8 +22,19 @@ pub trait FlipperTransport {
     /// Initialize and prepare serial stream for FZ RPC communication.
     /// Must be called before start sending / receiving RPC command frames.
     async fn init(&mut self) -> Result<(), FlipperError>;
-    /// Read FZ RPC frame. Returns frame body without frame header(length)
-    async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError>;
+
+    /// Split stream into two separated stream.
+    fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>);
+}
+
+#[async_trait]
+pub trait FlipperFrameSender {
     /// Write(send) FZ RPC frame. Frame header will be automatically calculated and appended.
     async fn write_frame(&mut self, data: &[u8]) -> Result<(), FlipperError>;
+}
+
+#[async_trait]
+pub trait FlipperFrameReceiver {
+    /// Read FZ RPC frame. Returns frame body without frame header(length)
+    async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError>;
 }

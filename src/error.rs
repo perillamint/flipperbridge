@@ -10,7 +10,7 @@
 
 use thiserror::Error;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum FlipperError {
     #[error("Failed to fetch adapter list: {0}")]
     BTAdapterError(String),
