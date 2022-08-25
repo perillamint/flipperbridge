@@ -155,7 +155,7 @@ struct SerialFrameSender {
 }
 
 impl SerialFrameSender {
-    pub fn new(write_stream: WriteHalf<SerialStream>) -> Self {
+    fn new(write_stream: WriteHalf<SerialStream>) -> Self {
         Self {
             framed: FramedWrite::new(write_stream, FlipperCodec::default()),
         }
@@ -178,7 +178,7 @@ struct SerialFrameReceiver {
 }
 
 impl SerialFrameReceiver {
-    pub fn new(read_stream: ReadHalf<SerialStream>) -> Self {
+    fn new(read_stream: ReadHalf<SerialStream>) -> Self {
         Self {
             framed: FramedRead::new(read_stream, FlipperCodec::default()),
         }
