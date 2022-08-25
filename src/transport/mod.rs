@@ -23,8 +23,8 @@ pub trait FlipperTransport {
     /// Must be called before start sending / receiving RPC command frames.
     async fn init(&mut self) -> Result<(), FlipperError>;
 
-    /// Split stream into two separated stream.
-    async fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>);
+    /// Convert transport into receiver / sender pair
+    fn into_channel(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>);
 }
 
 #[async_trait]

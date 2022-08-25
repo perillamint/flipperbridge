@@ -115,37 +115,13 @@ impl FlipperTransport for SerialTransport {
         Ok(())
     }
 
-    async fn split_stream(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
+    fn into_channel(self) -> (Box<dyn FlipperFrameReceiver>, Box<dyn FlipperFrameSender>) {
         let (rx, tx) = split(self.framed.unwrap().into_inner());
 
         (
             Box::new(SerialFrameReceiver::new(rx)),
             Box::new(SerialFrameSender::new(tx)),
         )
-    }
-}
-
-#[async_trait]
-impl FlipperFrameReceiver for SerialTransport {
-    /// Read variable size FZ RPC frame.
-    async fn read_frame(&mut self) -> Result<Vec<u8>, FlipperError> {
-        loop {
-            match self.framed.as_mut().unwrap().next().await {
-                None => {}
-                Some(x) => return Ok(x.unwrap()),
-            };
-        }
-    }
-}
-
-#[async_trait]
-impl FlipperFrameSender for SerialTransport {
-    /// Write(send) FZ RPC frame. Frame header will be automatically calculated and appended.
-    async fn write_frame(&mut self, data: &[u8]) -> Result<(), FlipperError> {
-        match self.framed.as_mut().unwrap().send(data).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(FlipperError::IOFailure(e.to_string())),
-        }
     }
 }
 
