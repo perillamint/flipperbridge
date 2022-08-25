@@ -27,7 +27,6 @@ use log::{debug, trace};
 use pretty_hex::*;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Decoder, Encoder};
 
 use std::time::Duration;
